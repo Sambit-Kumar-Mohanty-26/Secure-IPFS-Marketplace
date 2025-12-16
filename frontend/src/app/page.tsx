@@ -2,19 +2,9 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
-import { Lock, Unlock, Fingerprint, Shield, Cpu, Loader2, AlertTriangle, FileText, Maximize2 } from "lucide-react";
+import { Lock, Unlock, Fingerprint, Loader2, FileText, ShoppingBag, X, CheckCircle, AlertOctagon, Terminal, Filter, LayoutGrid } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion"; 
 import { CONTRACT_ADDRESS, ABI } from "./constants";
-
-const Scene3D = dynamic(() => import("./components/Scene"), { 
-    ssr: false,
-    loading: () => <div className="w-full h-full bg-black"></div>
-});
-
-interface FileData {
-    cid: string;
-    sig: string;
-    price: bigint;
-}
 
 declare global {
     interface Window {
@@ -22,7 +12,35 @@ declare global {
     }
 }
 
-async function fetchFromIPFS(cid: string): Promise<string> {
+const Scene3D = dynamic(() => import("./components/Scene"), { 
+    ssr: false,
+    loading: () => <div className="w-full h-full bg-black"></div>
+});
+
+interface AssetMetadata {
+    name: string;
+    description: string;
+    image?: string;
+    encrypted_content: string; 
+}
+
+interface DigitalAsset {
+    id: number;
+    price: bigint;
+    metadataCid: string;
+    creator: string;
+    meta: AssetMetadata | null; 
+    isOwned: boolean;
+}
+
+interface NotificationState {
+    type: "success" | "error" | "info";
+    title: string;
+    message: string;
+    txHash?: string;
+}
+
+async function fetchIPFS(cid: string, returnType: "json" | "hex" = "json"): Promise<any> {
     const cleanCid = cid.replace("ipfs://", "");
     const gateways = [
         `https://gateway.pinata.cloud/ipfs/${cleanCid}`,
@@ -33,107 +51,70 @@ async function fetchFromIPFS(cid: string): Promise<string> {
     for (const url of gateways) {
         try {
             const response = await fetch(url);
-            if (response.ok) return await response.text();
+            if (response.ok) {
+                if (returnType === "hex") {
+                    const buffer = await response.arrayBuffer();
+                    return ethers.hexlify(new Uint8Array(buffer));
+                }
+                const text = await response.text();
+                try {
+                    return JSON.parse(text);
+                } catch {
+                    return text; 
+                }
+            }
         } catch (e) {
-            console.warn(`Gateway ${url} failed, trying next...`);
+            console.warn(`Gateway ${url} failed...`);
         }
     }
-    throw new Error("All IPFS gateways failed to resolve the CID.");
+    throw new Error("Failed to load IPFS content");
 }
 
-async function decryptFile(encryptedHex: string, password: string): Promise<Uint8Array | null> {
+async function decryptFile(fileHex: string, keyHex: string): Promise<Uint8Array | null> {
     if (typeof window === "undefined") return null;
 
     try {
-        const data = ethers.getBytes("0x" + encryptedHex);
-        const salt = data.slice(0, 16);
-        const iv = data.slice(16, 28);
-        const authTag = data.slice(28, 44);
-        const encryptedContent = data.slice(44);
-        
-        const passwordBytes = ethers.toUtf8Bytes(password);
-        const key = await ethers.scrypt(passwordBytes, salt, 16384, 8, 1, 32);
-        const keyArray = ethers.getBytes(key);
+        const fileBytes = ethers.getBytes(fileHex);
+        const iv = fileBytes.slice(0, 12);
+        const ciphertext = fileBytes.slice(12);
 
+        const keyBytes = ethers.getBytes(keyHex);
         const cryptoKey = await window.crypto.subtle.importKey(
             "raw",
-            keyArray as unknown as BufferSource,
+            keyBytes as unknown as BufferSource,
             "AES-GCM",
             false,
             ["decrypt"]
         );
 
-        const encryptedWithTag = new Uint8Array(encryptedContent.length + authTag.length);
-        encryptedWithTag.set(encryptedContent);
-        encryptedWithTag.set(authTag, encryptedContent.length);
-
         const decryptedBuffer = await window.crypto.subtle.decrypt(
             { name: "AES-GCM", iv: iv },
             cryptoKey,
-            encryptedWithTag as unknown as BufferSource
+            ciphertext
         );
 
         return new Uint8Array(decryptedBuffer);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Decryption internals failed:", error);
-        throw new Error("Invalid Password or Corrupted File");
+        throw new Error("Decryption Failed: The key does not match this file.");
     }
 }
 
-const renderDecryptedContent = (data: Uint8Array | null) => {
-    if (!data) return null;
-
-    try {
-        const isPDF = data[0] === 37 && data[1] === 80 && data[2] === 68 && data[3] === 70;
-
-        if (isPDF) {
-            const blob = new Blob([data as any], { type: "application/pdf" });
-            const fileUrl = URL.createObjectURL(blob);
-            return (
-                <div className="relative w-full h-full group">
-                    <iframe
-                        src={fileUrl}
-                        className="w-full h-[65vh] min-h-100 rounded-lg border-none bg-white shadow-2xl"
-                        title="Secure Document"
-                    />
-                    <a 
-                        href={fileUrl} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="absolute top-4 right-4 p-2 bg-black/80 hover:bg-black text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Open in new tab"
-                    >
-                        <Maximize2 className="w-4 h-4" />
-                    </a>
-                </div>
-            );
-        } 
-        
-        const textDecoder = new TextDecoder();
-        const textContent = textDecoder.decode(data);
-        return (
-            <div className="h-96 bg-black/80 backdrop-blur rounded border border-emerald-500/20 p-6 overflow-y-auto shadow-inner relative">
-                <div className="absolute top-0 right-0 p-2 opacity-50">
-                    <FileText className="w-4 h-4 text-emerald-500" />
-                </div>
-                <pre className="text-xs md:text-sm text-emerald-300 font-mono whitespace-pre-wrap break-all selection:bg-emerald-500/30">
-                    {textContent}
-                </pre>
-            </div>
-        );
-
-    } catch (e) {
-        return <div className="text-red-500 flex items-center gap-2"><AlertTriangle/> Error rendering content</div>;
-    }
-};
-
 export default function Home() {
     const [account, setAccount] = useState("");
+    const [assets, setAssets] = useState<DigitalAsset[]>([]);
     const [status, setStatus] = useState("SYSTEM_INIT");
-    const [fileData, setFileData] = useState<FileData | null>(null);
-    const [isAuthorized, setIsAuthorized] = useState(false);
-    const [decryptedContent, setDecryptedContent] = useState<Uint8Array | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loadingId, setLoadingId] = useState<number | null>(null);
+    const [decryptedContent, setDecryptedContent] = useState<{id: number, content: Uint8Array} | null>(null);
+    const [notification, setNotification] = useState<NotificationState | null>(null);
+    const [filterMode, setFilterMode] = useState<"ALL" | "OWNED">("ALL");
+
+    useEffect(() => {
+        if (notification) {
+            const timer = setTimeout(() => setNotification(null), 6000);
+            return () => clearTimeout(timer);
+        }
+    }, [notification]);
 
     async function connectWallet() {
         if (!window.ethereum) return alert("MetaMask Required");
@@ -142,22 +123,45 @@ export default function Home() {
         setAccount(await signer.getAddress());
     }
 
-    async function loadData() {
+    async function loadMarketplace() {
         try {
             if (!window.ethereum) return;
+            setStatus("SCANNING_NET");
             const provider = new ethers.BrowserProvider(window.ethereum);
             const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
             
-            const data = await contract.getPublicData();
-            if(data) {
-                const [cid, sig, price] = data;
-                setFileData({ cid, sig, price });
-            }
+            try { await contract.assetCount(); } catch { setStatus("NET_ERROR"); return; }
 
-            if (account) {
-                const authorized = await contract.isAuthorized(account);
-                setIsAuthorized(authorized);
+            const count = await contract.assetCount();
+            const loadedAssets: DigitalAsset[] = [];
+            const countNum = Number(count);
+
+            for(let i = countNum; i > 0 && i > countNum - 10; i--) {
+                const [id, price, metadataCid, creator] = await contract.getAssetPublicInfo(i);
+                
+                let meta = null;
+                try {
+                    meta = await fetchIPFS(metadataCid, "json");
+                } catch(e) {
+                    console.error("Failed to load metadata", i);
+                }
+
+                let isOwned = false;
+                if(account) {
+                    const balance = await contract.balanceOf(account, i);
+                    isOwned = balance > 0n;
+                }
+
+                loadedAssets.push({
+                    id: Number(id),
+                    price,
+                    metadataCid,
+                    creator,
+                    meta,
+                    isOwned
+                });
             }
+            setAssets(loadedAssets);
             setStatus("CONNECTED");
         } catch (err) {
             console.error(err);
@@ -165,50 +169,77 @@ export default function Home() {
         }
     }
 
-    async function buyAccess() {
-        if(!fileData) return;
+    async function buyAccess(asset: DigitalAsset) {
         try {
-            setLoading(true);
+            setLoadingId(asset.id);
             const provider = new ethers.BrowserProvider(window.ethereum);
             const signer = await provider.getSigner();
             const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
             
-            const tx = await contract.requestAccess({ value: fileData.price });
-            setStatus("TX_PENDING");
+            const tx = await contract.buyAccess(asset.id, { value: asset.price });
+            
+            setNotification({
+                type: "info",
+                title: "TX SUBMITTED",
+                message: "Waiting for blockchain confirmation...",
+                txHash: tx.hash
+            });
+
             await tx.wait();
             
-            setIsAuthorized(true);
-            setStatus("ACCESS_GRANTED");
+            setNotification({
+                type: "success",
+                title: "ACCESS GRANTED",
+                message: `Asset #${asset.id} unlocked.`,
+                txHash: tx.hash
+            });
+
+            loadMarketplace();
         } catch (err: any) {
-            alert(err.message || "Transaction Failed");
-            setStatus("TX_FAILED");
+            setNotification({
+                type: "error",
+                title: "TRANSACTION FAILED",
+                message: err.message || "User rejected transaction"
+            });
         } finally {
-            setLoading(false);
+            setLoadingId(null);
         }
     }
 
-    async function handleDecrypt() {
-        if(!fileData) return;
+    async function handleDecrypt(asset: DigitalAsset) {
+        if(!asset.meta) return;
         try {
-            setLoading(true);
+            setLoadingId(asset.id);
             const provider = new ethers.BrowserProvider(window.ethereum);
             const signer = await provider.getSigner();
             const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
             
-            const secretPassword = await contract.getEncryptedKey();
-            const encryptedHex = await fetchFromIPFS(fileData.cid);
-            const result = await decryptFile(encryptedHex.trim(), secretPassword);
-            setDecryptedContent(result);
+            const rawKeyHex = await contract.getEncryptedKey(asset.id);
+            const fileHex = await fetchIPFS(asset.meta.encrypted_content, "hex");
+            const result = await decryptFile(fileHex, rawKeyHex);
+            
+            if (result) {
+                setDecryptedContent({ id: asset.id, content: result });
+                setNotification({
+                    type: "success",
+                    title: "DECRYPTION COMPLETE",
+                    message: "Secure payload rendered in viewer."
+                });
+            }
         } catch (err: any) {
             console.error(err);
-            alert("Decryption Failed: " + err.message);
+            setNotification({
+                type: "error",
+                title: "DECRYPTION FAILED",
+                message: err.message
+            });
         } finally {
-            setLoading(false);
+            setLoadingId(null);
         }
     }
 
     useEffect(() => {
-        loadData();
+        loadMarketplace();
         if(window.ethereum) {
             window.ethereum.on('accountsChanged', (accounts: string[]) => {
                 if(accounts.length > 0) setAccount(accounts[0]);
@@ -217,129 +248,228 @@ export default function Home() {
         }
     }, [account]);
 
+    const renderContent = (content: Uint8Array) => {
+        const blob = new Blob([content as any], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        
+        if (content[0] === 37 && content[1] === 80) {
+            return <iframe src={url} className="w-full h-full border-none" />;
+        }
+        
+        if ((content[0] === 137 && content[1] === 80) || (content[0] === 255 && content[1] === 216)) {
+             const imgBlob = new Blob([content as any]);
+             const imgUrl = URL.createObjectURL(imgBlob);
+             return <img src={imgUrl} className="max-w-full max-h-full object-contain mx-auto" />;
+        }
+
+        return (
+            <pre className="text-emerald-400 text-xs font-mono whitespace-pre-wrap p-4 h-full overflow-auto">
+                {new TextDecoder().decode(content)}
+            </pre>
+        );
+    };
+
+    const displayedAssets = assets.filter(asset => {
+        if (filterMode === "OWNED") return asset.isOwned;
+        return true;
+    });
+
     return (
         <div className="min-h-screen w-full bg-black text-white font-mono relative selection:bg-rose-500/30">
-            <div className="fixed inset-0 z-0 w-full h-full pointer-events-none">
-                <Scene3D unlocked={isAuthorized} />
+            
+            <div className="fixed inset-0 z-0 w-full h-full pointer-events-none opacity-50">
+                <Scene3D unlocked={false} />
             </div>
             <div className="fixed inset-0 z-0 bg-[url('/grid.svg')] opacity-10 pointer-events-none"></div>
-            <div className="relative z-10 flex flex-col min-h-screen">
-                <header className="sticky top-0 z-50 px-6 py-4 md:px-12 md:py-6 flex justify-between items-start backdrop-blur-md bg-black/20 border-b border-white/5">
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 md:w-12 md:h-12 bg-white/5 backdrop-blur border border-white/10 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.1)]">
-                            <Fingerprint className="text-rose-500 w-5 h-5 md:w-6 md:h-6" />
+
+            <AnimatePresence>
+                {notification && (
+                    <motion.div 
+                        initial={{ x: 100, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: 100, opacity: 0 }}
+                        className="fixed top-24 right-6 z-200 w-full max-w-sm"
+                    >
+                        <div className={`
+                            relative overflow-hidden rounded-lg border backdrop-blur-xl p-4 shadow-2xl
+                            ${notification.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/50 shadow-emerald-900/20' : ''}
+                            ${notification.type === 'error' ? 'bg-rose-950/90 border-rose-500/50 shadow-rose-900/20' : ''}
+                            ${notification.type === 'info' ? 'bg-blue-950/90 border-blue-500/50 shadow-blue-900/20' : ''}
+                        `}>
+                            <div className="flex gap-4">
+                                <div className={`mt-1 p-2 rounded-full 
+                                    ${notification.type === 'success' ? 'bg-emerald-500 text-black' : ''}
+                                    ${notification.type === 'error' ? 'bg-rose-500 text-white' : ''}
+                                    ${notification.type === 'info' ? 'bg-blue-500 text-white' : ''}
+                                `}>
+                                    {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
+                                    {notification.type === 'error' && <AlertOctagon className="w-5 h-5" />}
+                                    {notification.type === 'info' && <Loader2 className="w-5 h-5 animate-spin" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className={`text-sm font-bold tracking-widest ${
+                                        notification.type === 'success' ? 'text-emerald-400' : 
+                                        notification.type === 'error' ? 'text-rose-400' : 'text-blue-400'
+                                    }`}>
+                                        {notification.title}
+                                    </h4>
+                                    <p className="text-xs text-gray-300 mt-1">{notification.message}</p>
+                                </div>
+                                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-white h-fit">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <div className="relative z-10 flex flex-col min-h-screen">
+                
+                <header className="sticky top-0 z-50 px-6 py-4 flex justify-between items-center backdrop-blur-xl bg-black/60 border-b border-white/10">
+                    <div className="flex items-center gap-3">
+                        <Fingerprint className="text-rose-500 w-6 h-6" />
                         <div>
-                            <h1 className="text-lg md:text-xl font-bold tracking-[0.2em] text-transparent bg-clip-text bg-linear-to-r from-white to-gray-400">
-                                OBSIDIAN<span className="text-rose-500">_</span>VAULT
-                            </h1>
-                            <div className="flex items-center gap-2 mt-1">
-                                <div className={`w-1.5 h-1.5 rounded-full ${status === "OFFLINE_MODE" || status === "TX_FAILED" ? "bg-red-500" : "bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]"}`}></div>
-                                <span className="text-[10px] md:text-xs text-gray-400 font-medium tracking-wider">{status}</span>
+                            <h1 className="text-lg font-bold tracking-widest">OBSIDIAN_MARKET</h1>
+                            <div className="flex items-center gap-2">
+                                <div className={`w-1.5 h-1.5 rounded-full ${status === "CONNECTED" ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`}></div>
+                                <span className="text-[10px] text-gray-400">{status}</span>
                             </div>
                         </div>
                     </div>
 
                     {!account ? (
-                        <button onClick={connectWallet} className="px-5 py-2 md:px-6 md:py-2 bg-white hover:bg-gray-100 text-black font-bold text-[10px] md:text-xs tracking-widest transition-all duration-300 transform hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.3)] cursor-pointer rounded-sm">
+                        <button onClick={connectWallet} className="px-5 py-2 bg-white hover:bg-gray-200 text-black font-bold text-xs tracking-widest rounded-sm transition shadow-[0_0_15px_rgba(255,255,255,0.3)]">
                             CONNECT_WALLET
                         </button>
                     ) : (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-950/30 border border-emerald-500/20 text-emerald-400 text-[10px] md:text-xs font-bold rounded-full backdrop-blur-md shadow-[0_0_10px_rgba(16,185,129,0.1)]">
-                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                        <div className="px-4 py-2 bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-full backdrop-blur-md">
                             {account.slice(0,6)}...{account.slice(-4)}
                         </div>
                     )}
                 </header>
-                <main className="grow p-6 md:p-12 flex flex-col justify-end gap-8 pb-20">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-end max-w-7xl mx-auto w-full">
-                        <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-2xl relative group overflow-hidden shadow-2xl transition-transform hover:border-white/20">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-linear-to-b from-rose-500 to-transparent group-hover:h-3/4 transition-all duration-500"></div>
-                            
-                            {fileData ? (
-                                <div className="space-y-6">
-                                    <div className="flex justify-between items-end border-b border-white/5 pb-4">
-                                        <div>
-                                            <h3 className="text-[10px] text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                                <Cpu className="w-3 h-3" /> Encrypted Payload
-                                            </h3>
-                                            <p className="text-sm text-gray-300 font-sans truncate w-40 md:w-64 bg-white/5 px-2 py-1 rounded">
-                                                {fileData.cid}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <h3 className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Access Price</h3>
-                                            <p className="text-2xl md:text-3xl font-light text-white tracking-tighter">
-                                                {ethers.formatEther(fileData.price)} <span className="text-sm text-gray-500">ETH</span>
-                                            </p>
-                                        </div>
-                                    </div>
 
-                                    {!isAuthorized ? (
-                                        <button 
-                                            onClick={buyAccess} 
-                                            disabled={loading}
-                                            className="w-full py-4 bg-linear-to-r from-rose-700 via-rose-600 to-rose-700 bg-size-[200%_auto] animate-gradient text-white font-bold rounded-lg flex items-center justify-center gap-3 transition-all shadow-[0_4px_20px_rgba(225,29,72,0.3)] hover:shadow-[0_4px_30px_rgba(225,29,72,0.5)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group-hover:scale-[1.02]"
-                                        >
-                                            {loading ? <Loader2 className="animate-spin w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                                            {loading ? "VERIFYING BLOCKCHAIN..." : "PURCHASE_ACCESS_KEY"}
-                                        </button>
-                                    ) : (
-                                        <div className="w-full py-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded-lg flex items-center justify-center gap-2 shadow-[inset_0_0_20px_rgba(16,185,129,0.1)]">
-                                            <Shield className="w-5 h-5" /> ACCESS GRANTED
-                                        </div>
-                                    )}
+                <main className="grow p-6 md:p-12">
+                    
+                    {decryptedContent && (
+                         <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/90 backdrop-blur-md p-8 animate-in fade-in duration-300">
+                             <div className="w-full max-w-4xl h-[85vh] bg-black border border-emerald-500/50 rounded-xl overflow-hidden relative flex flex-col shadow-[0_0_100px_rgba(16,185,129,0.2)]">
+                                <div className="p-4 border-b border-emerald-500/30 flex justify-between items-center bg-emerald-950/30">
+                                    <h3 className="text-emerald-400 font-bold flex items-center gap-2 tracking-widest text-sm">
+                                        <Terminal className="w-4 h-4"/> DECRYPTED_PAYLOAD_VIEWER
+                                    </h3>
+                                    <button onClick={() => setDecryptedContent(null)} className="text-emerald-500/50 hover:text-emerald-400 transition-colors">
+                                        CLOSE_CONNECTION [X]
+                                    </button>
                                 </div>
+                                <div className="grow bg-white relative flex items-center justify-center">
+                                    {renderContent(decryptedContent.content)}
+                                </div>
+                             </div>
+                         </div>
+                    )}
+
+                    <div className="max-w-7xl mx-auto mb-8 flex justify-end">
+                        <div className="bg-white/5 border border-white/10 rounded-lg p-1 flex gap-1">
+                            <button 
+                                onClick={() => setFilterMode("ALL")}
+                                className={`px-4 py-2 rounded text-xs font-bold flex items-center gap-2 transition-all ${
+                                    filterMode === "ALL" 
+                                    ? "bg-rose-500 text-white shadow-lg shadow-rose-900/50" 
+                                    : "text-gray-400 hover:text-white"
+                                }`}
+                            >
+                                <LayoutGrid className="w-3 h-3" /> MARKET
+                            </button>
+                            <button 
+                                onClick={() => setFilterMode("OWNED")}
+                                className={`px-4 py-2 rounded text-xs font-bold flex items-center gap-2 transition-all ${
+                                    filterMode === "OWNED" 
+                                    ? "bg-emerald-500 text-black shadow-lg shadow-emerald-900/50" 
+                                    : "text-gray-400 hover:text-white"
+                                }`}
+                            >
+                                <Filter className="w-3 h-3" /> MY LIBRARY
+                            </button>
+                        </div>
+                    </div>
+
+                    {displayedAssets.length === 0 ? (
+                        <div className="text-center py-32 text-gray-500 space-y-4">
+                            {filterMode === "ALL" ? (
+                                <>
+                                    <div className="relative inline-block">
+                                        <div className="absolute inset-0 bg-rose-500/20 blur-xl rounded-full"></div>
+                                        <Loader2 className="w-12 h-12 animate-spin relative z-10 text-rose-500"/>
+                                    </div>
+                                    <p className="tracking-[0.2em] text-sm animate-pulse">SCANNING BLOCKCHAIN FOR ASSETS...</p>
+                                </>
                             ) : (
-                                <div className="animate-pulse flex items-center justify-center gap-3 text-gray-500 py-8">
-                                    <Loader2 className="w-5 h-5 animate-spin" /> 
-                                    <span className="tracking-widest text-xs">ESTABLISHING UPLINK...</span>
+                                <div className="text-center py-20">
+                                    <p className="text-gray-600 text-sm">NO SECURE ASSETS FOUND IN YOUR LIBRARY.</p>
+                                    <button 
+                                        onClick={() => setFilterMode("ALL")}
+                                        className="mt-4 text-emerald-500 text-xs hover:underline"
+                                    >
+                                        BROWSE MARKETPLACE
+                                    </button>
                                 </div>
                             )}
                         </div>
-                        {isAuthorized && (
-                            <div className="bg-emerald-950/80 backdrop-blur-xl border border-emerald-500/30 p-6 md:p-8 rounded-2xl animate-in slide-in-from-bottom-10 fade-in duration-700 shadow-[0_0_50px_-10px_rgba(16,185,129,0.15)] relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-full h-1 bg-linear-to-r from-transparent via-emerald-500 to-transparent opacity-50"></div>
-
-                                <div className="flex items-center justify-between mb-6 text-emerald-400 border-b border-emerald-500/20 pb-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="p-1.5 bg-emerald-500/20 rounded">
-                                            <Unlock className="w-4 h-4" />
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
+                            {displayedAssets.map((asset) => (
+                                <div key={asset.id} className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden hover:border-rose-500/50 transition-all duration-300 group hover:-translate-y-1 hover:shadow-[0_10px_40px_-10px_rgba(225,29,72,0.3)]">
+                                    
+                                    <div className="h-56 bg-linear-to-br from-gray-900 to-black border-b border-white/5 flex items-center justify-center relative overflow-hidden">
+                                        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20 group-hover:opacity-40 transition-opacity"></div>
+                                        <FileText className="w-16 h-16 text-gray-700 group-hover:text-rose-500 transition-all duration-500 group-hover:scale-110 group-hover:drop-shadow-[0_0_15px_rgba(225,29,72,0.5)]" />
+                                        <div className="absolute top-4 right-4 text-[10px] bg-white/5 backdrop-blur px-2 py-1 rounded border border-white/10 text-gray-400">
+                                            ASSET_ID :: {asset.id.toString().padStart(3, '0')}
                                         </div>
-                                        <span className="text-xs font-bold tracking-[0.2em] shadow-emerald-500/50 drop-shadow-sm">SECURE_CHANNEL</span>
                                     </div>
-                                    {decryptedContent && <span className="text-[10px] px-2 py-0.5 border border-emerald-500/30 rounded text-emerald-500/70">AES-256-GCM</span>}
-                                </div>
 
-                                {!decryptedContent ? (
-                                    <div className="text-center py-8">
-                                        <p className="text-gray-400 text-sm mb-6 font-sans">
-                                            Encrypted payload received. Private key is ready for decryption.
-                                        </p>
-                                        <button 
-                                            onClick={handleDecrypt}
-                                            disabled={loading}
-                                            className="w-full py-4 border border-emerald-500/50 hover:bg-emerald-500/10 hover:border-emerald-400 text-emerald-400 font-bold rounded-lg flex items-center justify-center gap-3 transition-all cursor-pointer disabled:opacity-50 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-                                        >
-                                            {loading ? (
-                                                <>
-                                                    <Loader2 className="animate-spin w-4 h-4" /> DECRYPTING...
-                                                </>
+                                    <div className="p-6 space-y-6">
+                                        <div className="space-y-2">
+                                            <h3 className="text-lg font-bold truncate text-white group-hover:text-rose-400 transition-colors tracking-wide">
+                                                {asset.meta?.name || `Unknown Asset #${asset.id}`}
+                                            </h3>
+                                            <p className="text-xs text-gray-400 line-clamp-2 h-8 leading-relaxed">
+                                                {asset.meta?.description || "No metadata available for this secure asset."}
+                                            </p>
+                                        </div>
+
+                                        <div className="flex justify-between items-end border-t border-white/5 pt-4">
+                                            <div>
+                                                <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Access Price</p>
+                                                <p className="text-xl font-light text-white">{ethers.formatEther(asset.price)} <span className="text-sm text-gray-600">ETH</span></p>
+                                            </div>
+                                            
+                                            {asset.isOwned ? (
+                                                <button 
+                                                    onClick={() => handleDecrypt(asset)}
+                                                    disabled={loadingId === asset.id}
+                                                    className="px-5 py-2.5 bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-xs font-bold rounded flex items-center gap-2 hover:bg-emerald-500/20 hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all"
+                                                >
+                                                    {loadingId === asset.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Unlock className="w-3 h-3"/>}
+                                                    DECRYPT
+                                                </button>
                                             ) : (
-                                                <>
-                                                    <Unlock className="w-4 h-4" /> INITIATE_DECRYPTION
-                                                </>
+                                                <button 
+                                                    onClick={() => buyAccess(asset)}
+                                                    disabled={loadingId === asset.id}
+                                                    className="px-5 py-2.5 bg-white text-black text-xs font-bold rounded flex items-center gap-2 hover:bg-gray-200 hover:scale-105 transition-all shadow-lg"
+                                                >
+                                                    {loadingId === asset.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <ShoppingBag className="w-3 h-3"/>}
+                                                    PURCHASE
+                                                </button>
                                             )}
-                                        </button>
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="w-full animate-in zoom-in-95 duration-500">
-                                        {renderDecryptedContent(decryptedContent)}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </main>
             </div>
         </div>
