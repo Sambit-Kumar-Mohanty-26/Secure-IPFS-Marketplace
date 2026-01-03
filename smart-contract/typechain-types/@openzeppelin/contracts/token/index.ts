@@ -3,3 +3,5 @@
 /* eslint-disable */
 import type * as erc1155 from "./ERC1155";
 export type { erc1155 };
+import type * as common from "./common";
+export type { common };

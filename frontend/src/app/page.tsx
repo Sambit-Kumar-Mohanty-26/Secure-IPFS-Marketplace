@@ -32,7 +32,10 @@ interface DigitalAsset {
     creator: string;
     meta: AssetMetadata | null; 
     isOwned: boolean;
-    active: boolean; 
+    active: boolean;
+    maxSupply: number;
+    currentSupply: number;
+    royalty: number;
 }
 
 interface NotificationState {
@@ -164,10 +167,13 @@ export default function Home() {
                     id: Number(data[0]),
                     price: data[1],
                     metadataCid: data[2],
-                    creator: data[3],
+                    creator: data[4],
                     meta,
                     isOwned,
-                    active: true
+                    active: true,
+                    maxSupply: Number(data[6]),
+                    currentSupply: Number(data[7]),
+                    royalty: Number(data[8]) / 100
                 });
             }
             setAssets(loadedAssets);
@@ -414,18 +420,36 @@ export default function Home() {
                             </div>
                             <p className="tracking-[0.2em] text-sm animate-pulse">SCANNING BLOCKCHAIN FOR ASSETS...</p>
                         </div>
+                     ) : status === "OFFLINE_MODE" ? (
+                        <div className="text-center py-20 space-y-4 animate-in fade-in zoom-in-95">
+                            <div className="p-4 bg-red-500/10 rounded-full inline-block mb-2 border border-red-500/20">
+                                <AlertOctagon className="w-8 h-8 text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white tracking-widest">CONNECTION LOST</h3>
+                            <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+                                We cannot read the blockchain data. This usually happens if:
+                                <br/>1. MetaMask is locked.
+                                <br/>2. You are on the wrong network (Switch to Sepolia or Localhost).
+                            </p>
+                            <button 
+                                onClick={() => window.location.reload()} 
+                                className="mt-4 px-6 py-2 bg-white text-black text-xs font-bold rounded hover:bg-gray-200 transition"
+                            >
+                                RETRY CONNECTION
+                            </button>
+                        </div>
+
+                    /* 3. EMPTY STATE (No Assets) */
                     ) : displayedAssets.length === 0 ? (
                         <div className="text-center py-32 space-y-4 animate-in fade-in zoom-in-95 duration-500">
                             <div className="p-4 bg-white/5 rounded-full inline-block mb-2">
                                 <SearchX className="w-8 h-8 text-gray-500" />
                             </div>
                             <h3 className="text-xl font-bold text-gray-300 tracking-widest">
-                                {filterMode === "ALL" ? "NO MARKET ASSETS FOUND" : "LIBRARY EMPTY"}
+                                {searchQuery ? "NO SEARCH RESULTS" : (filterMode === "ALL" ? "NO MARKET ASSETS FOUND" : "LIBRARY EMPTY")}
                             </h3>
                             <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                                {filterMode === "ALL" 
-                                    ? "The marketplace is currently waiting for new deployments. Be the first to mint." 
-                                    : "You haven't purchased any secure assets yet."}
+                                {searchQuery ? `We couldn't find anything matching "${searchQuery}".` : (filterMode === "ALL" ? "The marketplace is currently waiting for new deployments. Be the first to mint." : "You haven't purchased any secure assets yet.")}
                             </p>
                             {filterMode === "ALL" && (
                                 <Link href="/admin/create">
@@ -443,6 +467,23 @@ export default function Home() {
                                     <div className="h-56 bg-linear-to-br from-gray-900 to-black border-b border-white/5 flex items-center justify-center relative overflow-hidden">
                                         <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20 group-hover:opacity-40 transition-opacity"></div>
                                         <FileText className="w-16 h-16 text-gray-700 group-hover:text-rose-500 transition-all duration-500 group-hover:scale-110 group-hover:drop-shadow-[0_0_15px_rgba(225,29,72,0.5)]" />
+
+                                    <div className="absolute top-4 left-4 flex flex-wrap gap-2 z-10 max-w-[70%]">
+                                        <div className="text-[10px] bg-emerald-950/90 backdrop-blur-md border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-2 shadow-lg whitespace-nowrap">
+                                            <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                                            <span className="text-emerald-400 font-mono tracking-wide">
+                                                {asset.creator.slice(0,4)}...{asset.creator.slice(-4)}
+                                            </span>
+                                        </div>
+
+                                        {asset.royalty > 0 && (
+                                            <div className="text-[10px] bg-purple-950/90 backdrop-blur-md border border-purple-500/30 px-2 py-1 rounded flex items-center gap-1 shadow-lg whitespace-nowrap">
+                                                <span className="text-purple-400 font-bold tracking-widest">
+                                                    {asset.royalty}% ROYALTY
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
 
                                         <div className="absolute top-4 left-4 text-[10px] bg-emerald-950/80 backdrop-blur border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-2 shadow-lg">
                                             <ShieldCheck className="w-3 h-3 text-emerald-500" />
@@ -467,8 +508,13 @@ export default function Home() {
                                         </div>
 
                                         <div className="flex justify-between items-end border-t border-white/5 pt-4">
-                                            <div>
-                                                <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Access Price</p>
+                                            <div className="w-full mr-4">
+                                                <div className="flex justify-between text-[10px] text-gray-500 mb-1 uppercase tracking-widest">
+                                                    <span>Price</span>
+                                                    <span className={asset.currentSupply >= asset.maxSupply ? "text-red-500" : "text-emerald-500"}>
+                                                        Edition {asset.currentSupply}/{asset.maxSupply}
+                                                    </span>
+                                                </div>
                                                 <p className="text-xl font-light text-white">{ethers.formatEther(asset.price)} <span className="text-sm text-gray-600">ETH</span></p>
                                             </div>
                                             
@@ -496,11 +542,15 @@ export default function Home() {
                                                 ) : (
                                                     <button 
                                                         onClick={() => buyAccess(asset)}
-                                                        disabled={loadingId === asset.id}
-                                                        className="px-5 py-2.5 bg-white text-black text-xs font-bold rounded flex items-center gap-2 hover:bg-gray-200 hover:scale-105 transition-all shadow-lg"
+                                                        disabled={loadingId === asset.id || asset.currentSupply >= asset.maxSupply}
+                                                        className={`px-5 py-2.5 text-xs font-bold rounded flex items-center gap-2 transition-all shadow-lg
+                                                            ${asset.currentSupply >= asset.maxSupply 
+                                                                ? "bg-gray-800 text-gray-500 cursor-not-allowed border border-white/10" 
+                                                                : "bg-white text-black hover:bg-gray-200 hover:scale-105"
+                                                            }`}
                                                     >
                                                         {loadingId === asset.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <ShoppingBag className="w-3 h-3"/>}
-                                                        PURCHASE
+                                                        {asset.currentSupply >= asset.maxSupply ? "SOLD OUT" : "PURCHASE"}
                                                     </button>
                                                 )}
                                             </div>

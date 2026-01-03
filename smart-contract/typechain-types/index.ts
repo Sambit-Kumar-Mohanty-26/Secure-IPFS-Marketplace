@@ -14,6 +14,10 @@ export type { IERC20Errors } from "./@openzeppelin/contracts/interfaces/draft-IE
 export { IERC20Errors__factory } from "./factories/@openzeppelin/contracts/interfaces/draft-IERC6093.sol/IERC20Errors__factory";
 export type { IERC721Errors } from "./@openzeppelin/contracts/interfaces/draft-IERC6093.sol/IERC721Errors";
 export { IERC721Errors__factory } from "./factories/@openzeppelin/contracts/interfaces/draft-IERC6093.sol/IERC721Errors__factory";
+export type { IERC2981 } from "./@openzeppelin/contracts/interfaces/IERC2981";
+export { IERC2981__factory } from "./factories/@openzeppelin/contracts/interfaces/IERC2981__factory";
+export type { ERC2981 } from "./@openzeppelin/contracts/token/common/ERC2981";
+export { ERC2981__factory } from "./factories/@openzeppelin/contracts/token/common/ERC2981__factory";
 export type { ERC1155 } from "./@openzeppelin/contracts/token/ERC1155/ERC1155";
 export { ERC1155__factory } from "./factories/@openzeppelin/contracts/token/ERC1155/ERC1155__factory";
 export type { IERC1155MetadataURI } from "./@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI";

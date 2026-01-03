@@ -38,6 +38,7 @@ export interface SecureIPFSMarketplaceInterface extends Interface {
       | "owner"
       | "pendingWithdrawals"
       | "renounceOwnership"
+      | "royaltyInfo"
       | "safeBatchTransferFrom"
       | "safeTransferFrom"
       | "setApprovalForAll"
@@ -82,7 +83,7 @@ export interface SecureIPFSMarketplaceInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "createAsset",
-    values: [BigNumberish, string, string]
+    values: [BigNumberish, string, string, BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "getAssetPublicInfo",
@@ -104,6 +105,10 @@ export interface SecureIPFSMarketplaceInterface extends Interface {
   encodeFunctionData(
     functionFragment: "renounceOwnership",
     values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "royaltyInfo",
+    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "safeBatchTransferFrom",
@@ -172,6 +177,10 @@ export interface SecureIPFSMarketplaceInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "renounceOwnership",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "royaltyInfo",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -244,13 +253,20 @@ export namespace AssetCreatedEvent {
   export type InputTuple = [
     id: BigNumberish,
     creator: AddressLike,
-    price: BigNumberish
+    price: BigNumberish,
+    maxSupply: BigNumberish
   ];
-  export type OutputTuple = [id: bigint, creator: string, price: bigint];
+  export type OutputTuple = [
+    id: bigint,
+    creator: string,
+    price: bigint,
+    maxSupply: bigint
+  ];
   export interface OutputObject {
     id: bigint;
     creator: string;
     price: bigint;
+    maxSupply: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -401,13 +417,26 @@ export interface SecureIPFSMarketplace extends BaseContract {
   assets: TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, string, string, string, boolean] & {
+      [
+        bigint,
+        bigint,
+        string,
+        string,
+        string,
+        boolean,
+        bigint,
+        bigint,
+        bigint
+      ] & {
         id: bigint;
         price: bigint;
         metadataCid: string;
         encryptedKey: string;
         creator: string;
         active: boolean;
+        maxSupply: bigint;
+        currentSupply: bigint;
+        royaltyBasisPoints: bigint;
       }
     ],
     "view"
@@ -428,14 +457,31 @@ export interface SecureIPFSMarketplace extends BaseContract {
   buyAccess: TypedContractMethod<[_assetId: BigNumberish], [void], "payable">;
 
   createAsset: TypedContractMethod<
-    [_price: BigNumberish, _metadataCid: string, _encryptedKey: string],
+    [
+      _price: BigNumberish,
+      _metadataCid: string,
+      _encryptedKey: string,
+      _maxSupply: BigNumberish,
+      _royaltyPercent: BigNumberish
+    ],
     [void],
     "nonpayable"
   >;
 
   getAssetPublicInfo: TypedContractMethod<
     [_assetId: BigNumberish],
-    [[bigint, bigint, string, string]],
+    [
+      [bigint, bigint, string, string, boolean, bigint, bigint, bigint] & {
+        id: bigint;
+        price: bigint;
+        metadataCid: string;
+        creator: string;
+        active: boolean;
+        maxSupply: bigint;
+        currentSupply: bigint;
+        royaltyBasisPoints: bigint;
+      }
+    ],
     "view"
   >;
 
@@ -460,6 +506,12 @@ export interface SecureIPFSMarketplace extends BaseContract {
   >;
 
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
+
+  royaltyInfo: TypedContractMethod<
+    [tokenId: BigNumberish, salePrice: BigNumberish],
+    [[string, bigint] & { receiver: string; amount: bigint }],
+    "view"
+  >;
 
   safeBatchTransferFrom: TypedContractMethod<
     [
@@ -525,13 +577,26 @@ export interface SecureIPFSMarketplace extends BaseContract {
   ): TypedContractMethod<
     [arg0: BigNumberish],
     [
-      [bigint, bigint, string, string, string, boolean] & {
+      [
+        bigint,
+        bigint,
+        string,
+        string,
+        string,
+        boolean,
+        bigint,
+        bigint,
+        bigint
+      ] & {
         id: bigint;
         price: bigint;
         metadataCid: string;
         encryptedKey: string;
         creator: string;
         active: boolean;
+        maxSupply: bigint;
+        currentSupply: bigint;
+        royaltyBasisPoints: bigint;
       }
     ],
     "view"
@@ -556,7 +621,13 @@ export interface SecureIPFSMarketplace extends BaseContract {
   getFunction(
     nameOrSignature: "createAsset"
   ): TypedContractMethod<
-    [_price: BigNumberish, _metadataCid: string, _encryptedKey: string],
+    [
+      _price: BigNumberish,
+      _metadataCid: string,
+      _encryptedKey: string,
+      _maxSupply: BigNumberish,
+      _royaltyPercent: BigNumberish
+    ],
     [void],
     "nonpayable"
   >;
@@ -564,7 +635,18 @@ export interface SecureIPFSMarketplace extends BaseContract {
     nameOrSignature: "getAssetPublicInfo"
   ): TypedContractMethod<
     [_assetId: BigNumberish],
-    [[bigint, bigint, string, string]],
+    [
+      [bigint, bigint, string, string, boolean, bigint, bigint, bigint] & {
+        id: bigint;
+        price: bigint;
+        metadataCid: string;
+        creator: string;
+        active: boolean;
+        maxSupply: bigint;
+        currentSupply: bigint;
+        royaltyBasisPoints: bigint;
+      }
+    ],
     "view"
   >;
   getFunction(
@@ -586,6 +668,13 @@ export interface SecureIPFSMarketplace extends BaseContract {
   getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "royaltyInfo"
+  ): TypedContractMethod<
+    [tokenId: BigNumberish, salePrice: BigNumberish],
+    [[string, bigint] & { receiver: string; amount: bigint }],
+    "view"
+  >;
   getFunction(
     nameOrSignature: "safeBatchTransferFrom"
   ): TypedContractMethod<
@@ -715,7 +804,7 @@ export interface SecureIPFSMarketplace extends BaseContract {
       ApprovalForAllEvent.OutputObject
     >;
 
-    "AssetCreated(uint256,address,uint256)": TypedContractEvent<
+    "AssetCreated(uint256,address,uint256,uint256)": TypedContractEvent<
       AssetCreatedEvent.InputTuple,
       AssetCreatedEvent.OutputTuple,
       AssetCreatedEvent.OutputObject

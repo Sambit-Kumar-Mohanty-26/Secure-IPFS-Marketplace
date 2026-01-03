@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { Upload, FileKey, Shield, CheckCircle, Loader2, AlertOctagon, Terminal, Wallet, ArrowDownToLine, X, Coins } from "lucide-react";
+import { Upload, FileKey, Shield, CheckCircle, Loader2, AlertOctagon, Terminal, Wallet, ArrowDownToLine, X, Coins, Percent } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"; 
 import { CONTRACT_ADDRESS, ABI } from "../../constants";
 import { generateKey, encryptFile } from "../../utils/encryption";
@@ -23,7 +23,7 @@ interface NotificationState {
 
 export default function CreateAsset() {
   const [file, setFile] = useState<File | null>(null);
-  const [form, setForm] = useState({ title: "", description: "", price: "" });
+  const [form, setForm] = useState({ title: "", description: "", price: "", supply: "100", royalty: "5" });
   const [status, setStatus] = useState("IDLE"); 
   const [logs, setLogs] = useState<string[]>([]);
   const [earnings, setEarnings] = useState("0.0");
@@ -123,7 +123,7 @@ export default function CreateAsset() {
   }
 
   async function handleCreate() {
-    if (!file || !form.price || !form.title) {
+    if (!file || !form.price || !form.title || !form.supply || !form.royalty) {
         setNotification({ type: "error", title: "INPUT ERROR", message: "Please fill all fields and select a file." });
         return;
     }
@@ -158,8 +158,11 @@ export default function CreateAsset() {
         const signer = await provider.getSigner();
         const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
         const priceWei = ethers.parseEther(form.price);
+        const supplyNum = parseInt(form.supply);
+        const royaltyNum = parseInt(form.royalty);
+        addLog("Sending Transaction to Blockchain...");
         
-        const tx = await contract.createAsset(priceWei, `ipfs://${metadataCid}`, key);
+        const tx = await contract.createAsset(priceWei, `ipfs://${metadataCid}`, key, supplyNum, royaltyNum);
         
         setNotification({
             type: "info",
@@ -303,7 +306,6 @@ export default function CreateAsset() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                             <label className="text-xs text-gray-500 uppercase tracking-widest">Asset Title</label>
                             <input 
@@ -313,6 +315,7 @@ export default function CreateAsset() {
                                 onChange={e => setForm({...form, title: e.target.value})}
                             />
                         </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
                             <label className="text-xs text-gray-500 uppercase tracking-widest">Price (ETH)</label>
                             <input 
@@ -324,8 +327,35 @@ export default function CreateAsset() {
                                 onChange={e => setForm({...form, price: e.target.value})}
                             />
                         </div>
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-500 uppercase tracking-widest">Max Supply</label>
+                            <input 
+                                placeholder="100"
+                                type="number"
+                                className="w-full bg-black/50 border border-white/10 p-4 rounded-lg text-sm focus:border-rose-500 outline-none focus:ring-1 focus:ring-rose-500 transition-all placeholder:text-gray-700"
+                                value={form.supply}
+                                onChange={e => setForm({...form, supply: e.target.value})}
+                            />
+                            <p className="text-[10px] text-gray-500 leading-tight">
+                                <span className="text-emerald-500">*</span> You receive the 1st copy. 
+                                If set to <span className="text-white">1</span>, it will appear as <span className="text-rose-500">SOLD OUT</span> (1/1) until listed on secondary.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-500 uppercase tracking-widest">Royalty %</label>
+                            <div className="relative">
+                                <input 
+                                    placeholder="5"
+                                    type="number"
+                                    max="100"
+                                    className="w-full bg-black/50 border border-white/10 p-4 rounded-lg text-sm focus:border-rose-500 outline-none transition-all placeholder:text-gray-700 pr-10"
+                                    value={form.royalty}
+                                    onChange={e => setForm({...form, royalty: e.target.value})}
+                                />
+                                <Percent className="absolute right-3 top-3 w-4 h-4 text-gray-500" />
+                            </div>
+                        </div>
                     </div>
-                    
                     <div className="space-y-2">
                         <label className="text-xs text-gray-500 uppercase tracking-widest">Description</label>
                         <textarea 
