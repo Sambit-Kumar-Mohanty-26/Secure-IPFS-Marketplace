@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { Upload, FileKey, Shield, CheckCircle, Loader2, AlertOctagon, Terminal, Wallet, ArrowDownToLine, X, Coins, Percent } from "lucide-react";
+import { Upload, FileKey, Shield, CheckCircle, Loader2, AlertOctagon, Terminal, Wallet, ArrowDownToLine, X, Coins, Percent, FileStack } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"; 
 import { CONTRACT_ADDRESS, ABI } from "../../constants";
 import { generateKey, encryptFile } from "../../utils/encryption";
@@ -22,7 +22,7 @@ interface NotificationState {
 }
 
 export default function CreateAsset() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [form, setForm] = useState({ title: "", description: "", price: "", supply: "100", royalty: "5" });
   const [status, setStatus] = useState("IDLE"); 
   const [logs, setLogs] = useState<string[]>([]);
@@ -122,9 +122,15 @@ export default function CreateAsset() {
     return (await res.json()).IpfsHash;
   }
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+          setFiles(Array.from(e.target.files));
+      }
+  };
+
   async function handleCreate() {
-    if (!file || !form.price || !form.title || !form.supply || !form.royalty) {
-        setNotification({ type: "error", title: "INPUT ERROR", message: "Please fill all fields and select a file." });
+    if (files.length === 0 || !form.price || !form.title || !form.supply || !form.royalty) {
+        setNotification({ type: "error", title: "INPUT ERROR", message: "Please fill all fields and select files." });
         return;
     }
     
@@ -134,20 +140,28 @@ export default function CreateAsset() {
         setLogs([]);
         setStatus("ENCRYPTING");
         addLog("Initializing Secure Environment...");
-        
         const key = await generateKey();
-        addLog(`Encrypting '${file.name}' locally...`);
-        const encryptedBytes = await encryptFile(file, key);
-        
+        addLog(`Generated Unified AES-256 Key for ${files.length} file(s).`);
+
+        const encryptedCids: string[] = [];
+
         setStatus("UPLOADING");
-        addLog("Uploading Encrypted Asset to Pinata...");
-        const assetCid = await uploadToPinata(encryptedBytes, "encrypted_asset.bin");
+        
+        for (let i = 0; i < files.length; i++) {
+            const currentFile = files[i];
+            addLog(`[${i+1}/${files.length}] Encrypting '${currentFile.name}'...`);
+            const encryptedBytes = await encryptFile(currentFile, key);
+            
+            addLog(`[${i+1}/${files.length}] Uploading to IPFS...`);
+            const cid = await uploadToPinata(encryptedBytes, `encrypted_${currentFile.name}.bin`);
+            encryptedCids.push(`ipfs://${cid}`);
+        }
         
         addLog("Uploading Metadata...");
         const metadata = {
             name: form.title,
             description: form.description,
-            encrypted_content: `ipfs://${assetCid}`,
+            encrypted_content: encryptedCids,
             image: "ipfs://bafkreidmq5k57c67425746746" 
         };
         const metadataCid = await uploadToPinata(metadata, "metadata.json", true);
@@ -184,8 +198,8 @@ export default function CreateAsset() {
             txHash: tx.hash
         });
 
-        setFile(null);
-        setForm({ ...form, title: "", price: "" });
+        setFiles([]);
+        setForm({ ...form, title: "", price: "", supply: "100", royalty: "5" });
 
     } catch (err: any) {
         console.error(err);
@@ -294,15 +308,24 @@ export default function CreateAsset() {
                     <div className="group border-2 border-dashed border-white/20 rounded-xl p-10 text-center hover:border-rose-500 transition-colors cursor-pointer relative bg-black/20 overflow-hidden">
                         <input 
                             type="file" 
+                            multiple
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                            onChange={(e) => setFile(e.target.files?.[0] || null)}
+                            onChange={handleFileSelect}
                         />
                         <div className="relative z-10 pointer-events-none">
-                            <Upload className="w-10 h-10 text-gray-500 group-hover:text-rose-400 mx-auto mb-4 transition-colors group-hover:scale-110 duration-300" />
-                            <p className="text-lg font-medium text-gray-300">
-                                {file ? <span className="text-emerald-400">{file.name}</span> : "Drop Asset Here"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-2">Supports PDF, PNG, JPG, MP4</p>
+                            {files.length > 0 ? (
+                                <div className="space-y-2">
+                                    <FileStack className="w-10 h-10 text-emerald-400 mx-auto mb-4" />
+                                    <p className="text-lg font-medium text-white">{files.length} Files Selected</p>
+                                    <p className="text-xs text-emerald-400/70">Ready for Encryption</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Upload className="w-10 h-10 text-gray-500 group-hover:text-rose-400 mx-auto mb-4 transition-colors group-hover:scale-110 duration-300" />
+                                    <p className="text-lg font-medium text-gray-300">Drop Assets Here</p>
+                                    <p className="text-xs text-gray-500 mt-2">Supports Multi-File, Video, Audio, PDF, Images</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 

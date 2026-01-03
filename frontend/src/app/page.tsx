@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Lock, Unlock, Fingerprint, Loader2, FileText, ShoppingBag, X, CheckCircle, AlertOctagon, Terminal, Filter, LayoutGrid, Plus, Trash2, ShieldCheck, Search, SearchX } from "lucide-react";
+import { Lock, Unlock, Fingerprint, Loader2, FileText, ShoppingBag, X, CheckCircle, AlertOctagon, Terminal, Filter, LayoutGrid, Plus, Trash2, ShieldCheck, Search, SearchX, Play, Music, Image as ImageIcon, File, ArrowDownToLine } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"; 
 import { CONTRACT_ADDRESS, ABI } from "./constants";
 
@@ -22,7 +22,7 @@ interface AssetMetadata {
     name: string;
     description: string;
     image?: string;
-    encrypted_content: string; 
+    encrypted_content: string | string[]; 
 }
 
 interface DigitalAsset {
@@ -110,7 +110,7 @@ export default function Home() {
     const [assets, setAssets] = useState<DigitalAsset[]>([]);
     const [status, setStatus] = useState("SYSTEM_INIT");
     const [loadingId, setLoadingId] = useState<number | null>(null);
-    const [decryptedContent, setDecryptedContent] = useState<{id: number, content: Uint8Array} | null>(null);
+    const [decryptedContent, setDecryptedContent] = useState<{id: number, files: Uint8Array[]} | null>(null);   
     const [notification, setNotification] = useState<NotificationState | null>(null);
     const [filterMode, setFilterMode] = useState<"ALL" | "OWNED">("ALL");
     const [searchQuery, setSearchQuery] = useState("");
@@ -131,7 +131,7 @@ export default function Home() {
 
     async function loadMarketplace() {
         try {
-            if (!window.ethereum) return;
+            if (!window.ethereum) { setStatus("OFFLINE_MODE"); return; }
             setStatus("SCANNING_NET");
             const provider = new ethers.BrowserProvider(window.ethereum);
             const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
@@ -235,12 +235,22 @@ export default function Home() {
             const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
             
             const rawKeyHex = await contract.getEncryptedKey(asset.id);
-            const fileHex = await fetchIPFS(asset.meta.encrypted_content, "hex");
-            const result = await decryptFile(fileHex, rawKeyHex);
             
-            if (result) {
-                setDecryptedContent({ id: asset.id, content: result });
-                setNotification({ type: "success", title: "DECRYPTION COMPLETE", message: "Secure payload rendered in viewer." });
+            const cids = Array.isArray(asset.meta.encrypted_content) 
+                ? asset.meta.encrypted_content 
+                : [asset.meta.encrypted_content];
+
+            const decryptedFiles: Uint8Array[] = [];
+
+            for (const cid of cids) {
+                const fileHex = await fetchIPFS(cid, "hex");
+                const result = await decryptFile(fileHex, rawKeyHex);
+                if (result) decryptedFiles.push(result);
+            }
+            
+            if (decryptedFiles.length > 0) {
+                setDecryptedContent({ id: asset.id, files: decryptedFiles });
+                setNotification({ type: "success", title: "DECRYPTION COMPLETE", message: `${decryptedFiles.length} file(s) unlocked.` });
             }
         } catch (err: any) {
             console.error(err);
@@ -251,8 +261,8 @@ export default function Home() {
     }
 
     useEffect(() => {
-        loadMarketplace();
-        if(window.ethereum) {
+        if (typeof window !== 'undefined' && window.ethereum) {
+            loadMarketplace();
             window.ethereum.on('accountsChanged', (accounts: string[]) => {
                 if(accounts.length > 0) setAccount(accounts[0]);
                 else setAccount("");
@@ -260,24 +270,53 @@ export default function Home() {
         }
     }, [account]);
 
-    const renderContent = (content: Uint8Array) => {
-        const blob = new Blob([content as any], { type: "application/pdf" });
+    const renderSingleFile = (content: Uint8Array, index: number) => {
+        const blob = new Blob([content as any]);
         const url = URL.createObjectURL(blob);
         
         if (content[0] === 37 && content[1] === 80) {
-            return <iframe src={url} className="w-full h-full border-none" />;
+            const pdfBlob = new Blob([content as any], { type: "application/pdf" });
+            return (
+                <div key={index} className="w-full h-96 border border-white/10 rounded-lg overflow-hidden bg-white mb-6">
+                    <iframe src={URL.createObjectURL(pdfBlob)} className="w-full h-full border-none" />
+                </div>
+            );
         }
         
-        if ((content[0] === 137 && content[1] === 80) || (content[0] === 255 && content[1] === 216)) {
-             const imgBlob = new Blob([content as any]);
-             const imgUrl = URL.createObjectURL(imgBlob);
-             return <img src={imgUrl} className="max-w-full max-h-full object-contain mx-auto" />;
+        if ((content[0] === 137 && content[1] === 80) || (content[0] === 255 && content[1] === 216) || (content[0] === 71 && content[1] === 73)) {
+             return (
+                <div key={index} className="mb-6 text-center">
+                    <img src={url} className="max-w-full max-h-96 object-contain mx-auto rounded-lg border border-white/10 shadow-lg" />
+                    <a href={url} download={`image_${index}.png`} className="text-xs text-emerald-500 hover:underline mt-2 inline-flex items-center gap-1"><ArrowDownToLine className="w-3 h-3"/> Download Image</a>
+                </div>
+             );
+        }
+
+        if (content[4] === 102 && content[5] === 116 && content[6] === 121 && content[7] === 112) {
+             const vidBlob = new Blob([content as any], { type: "video/mp4" });
+             return (
+                <div key={index} className="mb-6">
+                    <video controls src={URL.createObjectURL(vidBlob)} className="w-full rounded-lg border border-white/10 shadow-lg" />
+                </div>
+             );
+        }
+
+        if ((content[0] === 73 && content[1] === 68 && content[2] === 51) || (content[0] === 255 && content[1] === 251)) {
+             const audioBlob = new Blob([content as any], { type: "audio/mpeg" });
+             return (
+                <div key={index} className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10 flex items-center gap-4">
+                    <div className="p-3 bg-rose-500/20 rounded-full"><Music className="w-6 h-6 text-rose-500" /></div>
+                    <audio controls src={URL.createObjectURL(audioBlob)} className="w-full" />
+                </div>
+             );
         }
 
         return (
-            <pre className="text-emerald-400 text-xs font-mono whitespace-pre-wrap p-4 h-full overflow-auto">
-                {new TextDecoder().decode(content)}
-            </pre>
+            <div key={index} className="mb-6 p-4 bg-black/50 rounded-lg border border-emerald-500/20 overflow-auto h-48 shadow-inner">
+                <pre className="text-emerald-400 text-xs font-mono whitespace-pre-wrap">
+                    {new TextDecoder().decode(content)}
+                </pre>
+            </div>
         );
     };
 
@@ -367,8 +406,8 @@ export default function Home() {
                                         CLOSE_CONNECTION [X]
                                     </button>
                                 </div>
-                                <div className="grow bg-white relative flex items-center justify-center">
-                                    {renderContent(decryptedContent.content)}
+                                <div className="grow bg-white/5 p-6 overflow-y-auto relative">
+                                    {decryptedContent.files.map((fileBytes, idx) => renderSingleFile(fileBytes, idx))}
                                 </div>
                              </div>
                          </div>
@@ -412,7 +451,7 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {status === "SCANNING_NET" || status === "SYSTEM_INIT" ? (
+                    {(status === "SCANNING_NET" || status === "SYSTEM_INIT") ? (
                         <div className="text-center py-32 text-gray-500 space-y-4">
                             <div className="relative inline-block">
                                 <div className="absolute inset-0 bg-rose-500/20 blur-xl rounded-full"></div>
@@ -438,8 +477,6 @@ export default function Home() {
                                 RETRY CONNECTION
                             </button>
                         </div>
-
-                    /* 3. EMPTY STATE (No Assets) */
                     ) : displayedAssets.length === 0 ? (
                         <div className="text-center py-32 space-y-4 animate-in fade-in zoom-in-95 duration-500">
                             <div className="p-4 bg-white/5 rounded-full inline-block mb-2">
@@ -468,28 +505,21 @@ export default function Home() {
                                         <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20 group-hover:opacity-40 transition-opacity"></div>
                                         <FileText className="w-16 h-16 text-gray-700 group-hover:text-rose-500 transition-all duration-500 group-hover:scale-110 group-hover:drop-shadow-[0_0_15px_rgba(225,29,72,0.5)]" />
 
-                                    <div className="absolute top-4 left-4 flex flex-wrap gap-2 z-10 max-w-[70%]">
-                                        <div className="text-[10px] bg-emerald-950/90 backdrop-blur-md border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-2 shadow-lg whitespace-nowrap">
-                                            <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                                            <span className="text-emerald-400 font-mono tracking-wide">
-                                                {asset.creator.slice(0,4)}...{asset.creator.slice(-4)}
-                                            </span>
-                                        </div>
-
-                                        {asset.royalty > 0 && (
-                                            <div className="text-[10px] bg-purple-950/90 backdrop-blur-md border border-purple-500/30 px-2 py-1 rounded flex items-center gap-1 shadow-lg whitespace-nowrap">
-                                                <span className="text-purple-400 font-bold tracking-widest">
-                                                    {asset.royalty}% ROYALTY
+                                        <div className="absolute top-4 left-4 flex flex-wrap gap-2 z-10 max-w-[70%]">
+                                            <div className="text-[10px] bg-emerald-950/90 backdrop-blur-md border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-2 shadow-lg whitespace-nowrap">
+                                                <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                                                <span className="text-emerald-400 font-mono tracking-wide">
+                                                    {asset.creator.slice(0,4)}...{asset.creator.slice(-4)}
                                                 </span>
                                             </div>
-                                        )}
-                                    </div>
-
-                                        <div className="absolute top-4 left-4 text-[10px] bg-emerald-950/80 backdrop-blur border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-2 shadow-lg">
-                                            <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                                            <span className="text-emerald-400 font-mono tracking-wide">
-                                                {asset.creator.slice(0,4)}...{asset.creator.slice(-4)}
-                                            </span>
+                                            
+                                            {asset.royalty > 0 && (
+                                                <div className="text-[10px] bg-purple-950/90 backdrop-blur-md border border-purple-500/30 px-2 py-1 rounded flex items-center gap-1 shadow-lg whitespace-nowrap">
+                                                    <span className="text-purple-400 font-bold tracking-widest">
+                                                        {asset.royalty}% ROYALTY
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="absolute top-4 right-4 text-[10px] bg-white/5 backdrop-blur px-2 py-1 rounded border border-white/10 text-gray-400">
