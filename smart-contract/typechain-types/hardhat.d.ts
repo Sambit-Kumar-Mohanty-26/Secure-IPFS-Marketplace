@@ -65,10 +65,6 @@ declare module "hardhat/types/runtime" {
       name: "SecureIPFSMarketplace",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.SecureIPFSMarketplace__factory>;
-    getContractFactory(
-      name: "SecureIPFSReference",
-      signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.SecureIPFSReference__factory>;
 
     getContractAt(
       name: "Ownable",
@@ -135,11 +131,6 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.SecureIPFSMarketplace>;
-    getContractAt(
-      name: "SecureIPFSReference",
-      address: string | ethers.Addressable,
-      signer?: ethers.Signer
-    ): Promise<Contracts.SecureIPFSReference>;
 
     deployContract(
       name: "Ownable",
@@ -193,10 +184,6 @@ declare module "hardhat/types/runtime" {
       name: "SecureIPFSMarketplace",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SecureIPFSMarketplace>;
-    deployContract(
-      name: "SecureIPFSReference",
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.SecureIPFSReference>;
 
     deployContract(
       name: "Ownable",
@@ -263,11 +250,6 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SecureIPFSMarketplace>;
-    deployContract(
-      name: "SecureIPFSReference",
-      args: any[],
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.SecureIPFSReference>;
 
     // default types
     getContractFactory(

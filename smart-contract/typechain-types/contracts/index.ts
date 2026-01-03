@@ -2,4 +2,3 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { SecureIPFSMarketplace } from "./SecureIPFSMarketplace";
-export type { SecureIPFSReference } from "./SecureIPFSReference";

@@ -32,5 +32,3 @@ export type { ReentrancyGuard } from "./@openzeppelin/contracts/utils/Reentrancy
 export { ReentrancyGuard__factory } from "./factories/@openzeppelin/contracts/utils/ReentrancyGuard__factory";
 export type { SecureIPFSMarketplace } from "./contracts/SecureIPFSMarketplace";
 export { SecureIPFSMarketplace__factory } from "./factories/contracts/SecureIPFSMarketplace__factory";
-//export type { SecureIPFSReference } from "./contracts/SecureIPFSReference";
-//export { SecureIPFSReference__factory } from "./factories/contracts/SecureIPFSReference__factory";
