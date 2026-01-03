@@ -75,4 +75,9 @@ contract SecureIPFSMarketplace is ERC1155, Ownable, ReentrancyGuard {
         Asset memory asset = assets[_assetId];
         return (asset.id, asset.price, asset.metadataCid, asset.creator);
     }
+
+    function toggleAssetStatus(uint256 _assetId) external {
+        require(assets[_assetId].creator == msg.sender, "Only creator can modify");
+        assets[_assetId].active = !assets[_assetId].active;
+    }
 }

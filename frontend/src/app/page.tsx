@@ -2,7 +2,8 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
-import { Lock, Unlock, Fingerprint, Loader2, FileText, ShoppingBag, X, CheckCircle, AlertOctagon, Terminal, Filter, LayoutGrid } from "lucide-react";
+import Link from "next/link";
+import { Lock, Unlock, Fingerprint, Loader2, FileText, ShoppingBag, X, CheckCircle, AlertOctagon, Terminal, Filter, LayoutGrid, Plus, Trash2, ShieldCheck, Search, SearchX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"; 
 import { CONTRACT_ADDRESS, ABI } from "./constants";
 
@@ -31,6 +32,7 @@ interface DigitalAsset {
     creator: string;
     meta: AssetMetadata | null; 
     isOwned: boolean;
+    active: boolean; 
 }
 
 interface NotificationState {
@@ -108,6 +110,7 @@ export default function Home() {
     const [decryptedContent, setDecryptedContent] = useState<{id: number, content: Uint8Array} | null>(null);
     const [notification, setNotification] = useState<NotificationState | null>(null);
     const [filterMode, setFilterMode] = useState<"ALL" | "OWNED">("ALL");
+    const [searchQuery, setSearchQuery] = useState("");
 
     useEffect(() => {
         if (notification) {
@@ -136,12 +139,12 @@ export default function Home() {
             const loadedAssets: DigitalAsset[] = [];
             const countNum = Number(count);
 
-            for(let i = countNum; i > 0 && i > countNum - 10; i--) {
-                const [id, price, metadataCid, creator] = await contract.getAssetPublicInfo(i);
+            for(let i = countNum; i > 0 && i > countNum - 20; i--) {
+                const data = await contract.getAssetPublicInfo(i);
                 
                 let meta = null;
                 try {
-                    meta = await fetchIPFS(metadataCid, "json");
+                    meta = await fetchIPFS(data[2], "json");
                 } catch(e) {
                     console.error("Failed to load metadata", i);
                 }
@@ -153,12 +156,13 @@ export default function Home() {
                 }
 
                 loadedAssets.push({
-                    id: Number(id),
-                    price,
-                    metadataCid,
-                    creator,
+                    id: Number(data[0]),
+                    price: data[1],
+                    metadataCid: data[2],
+                    creator: data[3],
                     meta,
-                    isOwned
+                    isOwned,
+                    active: true
                 });
             }
             setAssets(loadedAssets);
@@ -166,6 +170,27 @@ export default function Home() {
         } catch (err) {
             console.error(err);
             setStatus("OFFLINE_MODE");
+        }
+    }
+
+    async function toggleAssetStatus(assetId: number) {
+        try {
+            setLoadingId(assetId);
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+            
+            const tx = await contract.toggleAssetStatus(assetId);
+            
+            setNotification({ type: "info", title: "UPDATING STATUS", message: "Hiding asset from marketplace...", txHash: tx.hash });
+            await tx.wait();
+            
+            setNotification({ type: "success", title: "ASSET HIDDEN", message: "Asset visibility updated.", txHash: tx.hash });
+            loadMarketplace();
+        } catch(err: any) {
+            setNotification({ type: "error", title: "ERROR", message: err.message });
+        } finally {
+            setLoadingId(null);
         }
     }
 
@@ -178,29 +203,13 @@ export default function Home() {
             
             const tx = await contract.buyAccess(asset.id, { value: asset.price });
             
-            setNotification({
-                type: "info",
-                title: "TX SUBMITTED",
-                message: "Waiting for blockchain confirmation...",
-                txHash: tx.hash
-            });
-
+            setNotification({ type: "info", title: "TX SUBMITTED", message: "Waiting for blockchain confirmation...", txHash: tx.hash });
             await tx.wait();
             
-            setNotification({
-                type: "success",
-                title: "ACCESS GRANTED",
-                message: `Asset #${asset.id} unlocked.`,
-                txHash: tx.hash
-            });
-
+            setNotification({ type: "success", title: "ACCESS GRANTED", message: `Asset #${asset.id} unlocked.`, txHash: tx.hash });
             loadMarketplace();
         } catch (err: any) {
-            setNotification({
-                type: "error",
-                title: "TRANSACTION FAILED",
-                message: err.message || "User rejected transaction"
-            });
+            setNotification({ type: "error", title: "TRANSACTION FAILED", message: err.message || "User rejected transaction" });
         } finally {
             setLoadingId(null);
         }
@@ -220,19 +229,11 @@ export default function Home() {
             
             if (result) {
                 setDecryptedContent({ id: asset.id, content: result });
-                setNotification({
-                    type: "success",
-                    title: "DECRYPTION COMPLETE",
-                    message: "Secure payload rendered in viewer."
-                });
+                setNotification({ type: "success", title: "DECRYPTION COMPLETE", message: "Secure payload rendered in viewer." });
             }
         } catch (err: any) {
             console.error(err);
-            setNotification({
-                type: "error",
-                title: "DECRYPTION FAILED",
-                message: err.message
-            });
+            setNotification({ type: "error", title: "DECRYPTION FAILED", message: err.message });
         } finally {
             setLoadingId(null);
         }
@@ -270,8 +271,14 @@ export default function Home() {
     };
 
     const displayedAssets = assets.filter(asset => {
-        if (filterMode === "OWNED") return asset.isOwned;
-        return true;
+        const matchesFilter = filterMode === "OWNED" ? asset.isOwned : true;
+        const searchLower = searchQuery.toLowerCase();
+        const matchesSearch = 
+            asset.meta?.name.toLowerCase().includes(searchLower) || 
+            asset.meta?.description.toLowerCase().includes(searchLower) ||
+            asset.id.toString() === searchLower;
+
+        return matchesFilter && matchesSearch;
     });
 
     return (
@@ -284,40 +291,19 @@ export default function Home() {
 
             <AnimatePresence>
                 {notification && (
-                    <motion.div 
-                        initial={{ x: 100, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        exit={{ x: 100, opacity: 0 }}
-                        className="fixed top-24 right-6 z-200 w-full max-w-sm"
-                    >
-                        <div className={`
-                            relative overflow-hidden rounded-lg border backdrop-blur-xl p-4 shadow-2xl
-                            ${notification.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/50 shadow-emerald-900/20' : ''}
-                            ${notification.type === 'error' ? 'bg-rose-950/90 border-rose-500/50 shadow-rose-900/20' : ''}
-                            ${notification.type === 'info' ? 'bg-blue-950/90 border-blue-500/50 shadow-blue-900/20' : ''}
-                        `}>
+                    <motion.div initial={{ x: 100, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 100, opacity: 0 }} className="fixed top-24 right-6 z-200 w-full max-w-sm">
+                        <div className={`relative overflow-hidden rounded-lg border backdrop-blur-xl p-4 shadow-2xl ${notification.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/50' : notification.type === 'error' ? 'bg-rose-950/90 border-rose-500/50' : 'bg-blue-950/90 border-blue-500/50'}`}>
                             <div className="flex gap-4">
-                                <div className={`mt-1 p-2 rounded-full 
-                                    ${notification.type === 'success' ? 'bg-emerald-500 text-black' : ''}
-                                    ${notification.type === 'error' ? 'bg-rose-500 text-white' : ''}
-                                    ${notification.type === 'info' ? 'bg-blue-500 text-white' : ''}
-                                `}>
+                                <div className={`mt-1 p-2 rounded-full ${notification.type === 'success' ? 'bg-emerald-500 text-black' : notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-blue-500 text-white'}`}>
                                     {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
                                     {notification.type === 'error' && <AlertOctagon className="w-5 h-5" />}
                                     {notification.type === 'info' && <Loader2 className="w-5 h-5 animate-spin" />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <h4 className={`text-sm font-bold tracking-widest ${
-                                        notification.type === 'success' ? 'text-emerald-400' : 
-                                        notification.type === 'error' ? 'text-rose-400' : 'text-blue-400'
-                                    }`}>
-                                        {notification.title}
-                                    </h4>
+                                    <h4 className="text-sm font-bold tracking-widest">{notification.title}</h4>
                                     <p className="text-xs text-gray-300 mt-1">{notification.message}</p>
                                 </div>
-                                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-white h-fit">
-                                    <X className="w-4 h-4" />
-                                </button>
+                                <button onClick={() => setNotification(null)} className="text-gray-500 hover:text-white h-fit"><X className="w-4 h-4" /></button>
                             </div>
                         </div>
                     </motion.div>
@@ -338,15 +324,23 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {!account ? (
-                        <button onClick={connectWallet} className="px-5 py-2 bg-white hover:bg-gray-200 text-black font-bold text-xs tracking-widest rounded-sm transition shadow-[0_0_15px_rgba(255,255,255,0.3)]">
-                            CONNECT_WALLET
-                        </button>
-                    ) : (
-                        <div className="px-4 py-2 bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-full backdrop-blur-md">
-                            {account.slice(0,6)}...{account.slice(-4)}
-                        </div>
-                    )}
+                    <div className="flex items-center gap-4">
+                        <Link href="/admin/create">
+                            <button className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-xs font-bold rounded hover:bg-white/10 transition">
+                                <Plus className="w-3 h-3" /> CREATE_ASSET
+                            </button>
+                        </Link>
+
+                        {!account ? (
+                            <button onClick={connectWallet} className="px-5 py-2 bg-white hover:bg-gray-200 text-black font-bold text-xs tracking-widest rounded-sm transition">
+                                CONNECT_WALLET
+                            </button>
+                        ) : (
+                            <div className="px-4 py-2 bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-full backdrop-blur-md">
+                                {account.slice(0,6)}...{account.slice(-4)}
+                            </div>
+                        )}
+                    </div>
                 </header>
 
                 <main className="grow p-6 md:p-12">
@@ -368,8 +362,21 @@ export default function Home() {
                              </div>
                          </div>
                     )}
+                    <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                        
+                        <div className="relative w-full md:w-96">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Search className="w-4 h-4 text-gray-500" />
+                            </div>
+                            <input 
+                                type="text"
+                                placeholder="Search by Asset Name or ID..."
+                                className="w-full bg-white/5 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none transition-all placeholder:text-gray-600"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
 
-                    <div className="max-w-7xl mx-auto mb-8 flex justify-end">
                         <div className="bg-white/5 border border-white/10 rounded-lg p-1 flex gap-1">
                             <button 
                                 onClick={() => setFilterMode("ALL")}
@@ -389,31 +396,38 @@ export default function Home() {
                                     : "text-gray-400 hover:text-white"
                                 }`}
                             >
-                                <Filter className="w-3 h-3" /> MY LIBRARY
+                                <Filter className="w-3 h-3" /> LIBRARY
                             </button>
                         </div>
                     </div>
 
-                    {displayedAssets.length === 0 ? (
+                    {status === "SCANNING_NET" || status === "SYSTEM_INIT" ? (
                         <div className="text-center py-32 text-gray-500 space-y-4">
-                            {filterMode === "ALL" ? (
-                                <>
-                                    <div className="relative inline-block">
-                                        <div className="absolute inset-0 bg-rose-500/20 blur-xl rounded-full"></div>
-                                        <Loader2 className="w-12 h-12 animate-spin relative z-10 text-rose-500"/>
-                                    </div>
-                                    <p className="tracking-[0.2em] text-sm animate-pulse">SCANNING BLOCKCHAIN FOR ASSETS...</p>
-                                </>
-                            ) : (
-                                <div className="text-center py-20">
-                                    <p className="text-gray-600 text-sm">NO SECURE ASSETS FOUND IN YOUR LIBRARY.</p>
-                                    <button 
-                                        onClick={() => setFilterMode("ALL")}
-                                        className="mt-4 text-emerald-500 text-xs hover:underline"
-                                    >
-                                        BROWSE MARKETPLACE
+                            <div className="relative inline-block">
+                                <div className="absolute inset-0 bg-rose-500/20 blur-xl rounded-full"></div>
+                                <Loader2 className="w-12 h-12 animate-spin relative z-10 text-rose-500"/>
+                            </div>
+                            <p className="tracking-[0.2em] text-sm animate-pulse">SCANNING BLOCKCHAIN FOR ASSETS...</p>
+                        </div>
+                    ) : displayedAssets.length === 0 ? (
+                        <div className="text-center py-32 space-y-4 animate-in fade-in zoom-in-95 duration-500">
+                            <div className="p-4 bg-white/5 rounded-full inline-block mb-2">
+                                <SearchX className="w-8 h-8 text-gray-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-300 tracking-widest">
+                                {filterMode === "ALL" ? "NO MARKET ASSETS FOUND" : "LIBRARY EMPTY"}
+                            </h3>
+                            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                                {filterMode === "ALL" 
+                                    ? "The marketplace is currently waiting for new deployments. Be the first to mint." 
+                                    : "You haven't purchased any secure assets yet."}
+                            </p>
+                            {filterMode === "ALL" && (
+                                <Link href="/admin/create">
+                                    <button className="mt-4 px-6 py-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded hover:bg-emerald-500/20 transition">
+                                        INITIALIZE MINTING
                                     </button>
-                                </div>
+                                </Link>
                             )}
                         </div>
                     ) : (
@@ -424,6 +438,14 @@ export default function Home() {
                                     <div className="h-56 bg-linear-to-br from-gray-900 to-black border-b border-white/5 flex items-center justify-center relative overflow-hidden">
                                         <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20 group-hover:opacity-40 transition-opacity"></div>
                                         <FileText className="w-16 h-16 text-gray-700 group-hover:text-rose-500 transition-all duration-500 group-hover:scale-110 group-hover:drop-shadow-[0_0_15px_rgba(225,29,72,0.5)]" />
+
+                                        <div className="absolute top-4 left-4 text-[10px] bg-emerald-950/80 backdrop-blur border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-2 shadow-lg">
+                                            <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                                            <span className="text-emerald-400 font-mono tracking-wide">
+                                                {asset.creator.slice(0,4)}...{asset.creator.slice(-4)}
+                                            </span>
+                                        </div>
+
                                         <div className="absolute top-4 right-4 text-[10px] bg-white/5 backdrop-blur px-2 py-1 rounded border border-white/10 text-gray-400">
                                             ASSET_ID :: {asset.id.toString().padStart(3, '0')}
                                         </div>
@@ -445,25 +467,38 @@ export default function Home() {
                                                 <p className="text-xl font-light text-white">{ethers.formatEther(asset.price)} <span className="text-sm text-gray-600">ETH</span></p>
                                             </div>
                                             
-                                            {asset.isOwned ? (
-                                                <button 
-                                                    onClick={() => handleDecrypt(asset)}
-                                                    disabled={loadingId === asset.id}
-                                                    className="px-5 py-2.5 bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-xs font-bold rounded flex items-center gap-2 hover:bg-emerald-500/20 hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all"
-                                                >
-                                                    {loadingId === asset.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Unlock className="w-3 h-3"/>}
-                                                    DECRYPT
-                                                </button>
-                                            ) : (
-                                                <button 
-                                                    onClick={() => buyAccess(asset)}
-                                                    disabled={loadingId === asset.id}
-                                                    className="px-5 py-2.5 bg-white text-black text-xs font-bold rounded flex items-center gap-2 hover:bg-gray-200 hover:scale-105 transition-all shadow-lg"
-                                                >
-                                                    {loadingId === asset.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <ShoppingBag className="w-3 h-3"/>}
-                                                    PURCHASE
-                                                </button>
-                                            )}
+                                            <div className="flex gap-2">
+                                                {account && account.toLowerCase() === asset.creator.toLowerCase() && (
+                                                    <button 
+                                                        onClick={() => toggleAssetStatus(asset.id)} 
+                                                        disabled={loadingId === asset.id}
+                                                        className="p-2.5 bg-red-950/30 border border-red-500/30 text-red-500 rounded hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
+                                                        title="Deactivate Asset"
+                                                    >
+                                                        {loadingId === asset.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Trash2 className="w-4 h-4" />}
+                                                    </button>
+                                                )}
+
+                                                {asset.isOwned ? (
+                                                    <button 
+                                                        onClick={() => handleDecrypt(asset)}
+                                                        disabled={loadingId === asset.id}
+                                                        className="px-5 py-2.5 bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-xs font-bold rounded flex items-center gap-2 hover:bg-emerald-500/20 hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all"
+                                                    >
+                                                        {loadingId === asset.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Unlock className="w-3 h-3"/>}
+                                                        DECRYPT
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        onClick={() => buyAccess(asset)}
+                                                        disabled={loadingId === asset.id}
+                                                        className="px-5 py-2.5 bg-white text-black text-xs font-bold rounded flex items-center gap-2 hover:bg-gray-200 hover:scale-105 transition-all shadow-lg"
+                                                    >
+                                                        {loadingId === asset.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <ShoppingBag className="w-3 h-3"/>}
+                                                        PURCHASE
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

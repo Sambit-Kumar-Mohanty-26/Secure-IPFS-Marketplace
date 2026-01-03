@@ -42,6 +42,7 @@ export interface SecureIPFSMarketplaceInterface extends Interface {
       | "safeTransferFrom"
       | "setApprovalForAll"
       | "supportsInterface"
+      | "toggleAssetStatus"
       | "transferOwnership"
       | "uri"
       | "withdrawFunds"
@@ -127,6 +128,10 @@ export interface SecureIPFSMarketplaceInterface extends Interface {
     values: [BytesLike]
   ): string;
   encodeFunctionData(
+    functionFragment: "toggleAssetStatus",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
     functionFragment: "transferOwnership",
     values: [AddressLike]
   ): string;
@@ -183,6 +188,10 @@ export interface SecureIPFSMarketplaceInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "supportsInterface",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "toggleAssetStatus",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -488,6 +497,12 @@ export interface SecureIPFSMarketplace extends BaseContract {
     "view"
   >;
 
+  toggleAssetStatus: TypedContractMethod<
+    [_assetId: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
+
   transferOwnership: TypedContractMethod<
     [newOwner: AddressLike],
     [void],
@@ -607,6 +622,9 @@ export interface SecureIPFSMarketplace extends BaseContract {
   getFunction(
     nameOrSignature: "supportsInterface"
   ): TypedContractMethod<[interfaceId: BytesLike], [boolean], "view">;
+  getFunction(
+    nameOrSignature: "toggleAssetStatus"
+  ): TypedContractMethod<[_assetId: BigNumberish], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "transferOwnership"
   ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
