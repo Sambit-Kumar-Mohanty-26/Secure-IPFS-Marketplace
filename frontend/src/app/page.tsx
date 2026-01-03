@@ -140,19 +140,24 @@ export default function Home() {
             const countNum = Number(count);
 
             for(let i = countNum; i > 0 && i > countNum - 20; i--) {
-                const data = await contract.getAssetPublicInfo(i);
+                const data = await contract.assets(i);
+                const isActive = data[5];
+                let isOwned = false;
+                
+                if(account) {
+                    const balance = await contract.balanceOf(account, i);
+                    isOwned = balance > 0n;
+                }
+
+                if (!isActive && !isOwned) {
+                    continue; 
+                }
                 
                 let meta = null;
                 try {
                     meta = await fetchIPFS(data[2], "json");
                 } catch(e) {
                     console.error("Failed to load metadata", i);
-                }
-
-                let isOwned = false;
-                if(account) {
-                    const balance = await contract.balanceOf(account, i);
-                    isOwned = balance > 0n;
                 }
 
                 loadedAssets.push({

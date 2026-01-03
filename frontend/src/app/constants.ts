@@ -13,6 +13,7 @@ export const ABI = [
   "function balanceOf(address account, uint256 id) external view returns (uint256)",
   "function assetCount() external view returns (uint256)",
   "function pendingWithdrawals(address user) external view returns (uint256)",
+  "function assets(uint256 id) external view returns (uint256 id, uint256 price, string metadataCid, string encryptedKey, address creator, bool active)",
 
   // --- EVENTS ---
   "event AssetCreated(uint256 indexed id, address indexed creator, uint256 price)",
