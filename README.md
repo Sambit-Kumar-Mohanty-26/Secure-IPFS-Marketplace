@@ -942,7 +942,7 @@ SOFTWARE.
 ### Get Help
 - 🐛 **Report Bugs**: [Open an Issue](https://github.com/Sambit-Kumar-Mohanty-26/Secure-IPFS-Marketplace/issues)
 - 💡 **Feature Requests**: [Open a Discussion](https://github.com/Sambit-Kumar-Mohanty-26/Secure-IPFS-Marketplace/discussions)
-- 📧 **Email**: (Add your email if desired)
+- 📧 **Email**: sambitkumarmohanty25@gmail.com
 
 ---
 
