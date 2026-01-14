@@ -965,14 +965,7 @@ SOFTWARE.
 - ✅ Basic frontend UI
 - ✅ MetaMask integration
 
-### Phase 2 (Coming Soon)
-- 🔲 IPFS pinning integration (Pinata/web3.storage)
-- 🔲 User profiles & asset management dashboard
-- 🔲 Search & filter functionality
-- 🔲 Category-based browsing
-- 🔲 Asset preview before purchase
-
-### Phase 3 (Future)
+### Phase 2 (Future)
 - 🔲 Secondary marketplace (NFT resales)
 - 🔲 Auction mechanism
 - 🔲 Multi-chain support (Polygon, Arbitrum)
@@ -980,7 +973,7 @@ SOFTWARE.
 - 🔲 Creator verification system
 - 🔲 Mobile app (React Native)
 
-### Phase 4 (Vision)
+### Phase 3 (Vision)
 - 🔲 DAO governance
 - 🔲 Token-gated communities
 - 🔲 Decentralized identity (DID)
