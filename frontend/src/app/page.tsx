@@ -114,6 +114,11 @@ export default function Home() {
     const [notification, setNotification] = useState<NotificationState | null>(null);
     const [filterMode, setFilterMode] = useState<"ALL" | "OWNED">("ALL");
     const [searchQuery, setSearchQuery] = useState("");
+    const [isMobile, setIsMobile] = useState(true);
+
+    useEffect(() => {
+        setIsMobile(window.innerWidth < 768);
+    }, []);
 
     useEffect(() => {
         if (notification) {
@@ -139,44 +144,62 @@ export default function Home() {
             try { await contract.assetCount(); } catch { setStatus("NET_ERROR"); return; }
 
             const count = await contract.assetCount();
-            const loadedAssets: DigitalAsset[] = [];
             const countNum = Number(count);
 
+            const promises = [];
+
             for(let i = countNum; i > 0 && i > countNum - 20; i--) {
-                const data = await contract.assets(i);
-                const isActive = data[5];
-                let isOwned = false;
-                
-                if(account) {
-                    const balance = await contract.balanceOf(account, i);
-                    isOwned = balance > 0n;
-                }
 
-                if (!isActive && !isOwned) {
-                    continue; 
-                }
-                
-                let meta = null;
-                try {
-                    meta = await fetchIPFS(data[2], "json");
-                } catch(e) {
-                    console.error("Failed to load metadata", i);
-                }
+                promises.push((async () => {
+                    try {
+                        const data = await contract.assets(i);
 
-                loadedAssets.push({
-                    id: Number(data[0]),
-                    price: data[1],
-                    metadataCid: data[2],
-                    creator: data[4],
-                    meta,
-                    isOwned,
-                    active: true,
-                    maxSupply: Number(data[6]),
-                    currentSupply: Number(data[7]),
-                    royalty: Number(data[8]) / 100
-                });
+                        const isActive = data[5];
+                        let isOwned = false;
+                        
+                        if(account) {
+                            try {
+                                const balance = await contract.balanceOf(account, i);
+                                isOwned = balance > 0n;
+                            } catch(e) {
+                                console.warn(`Balance check failed for ID ${i}`);
+                            }
+                        }
+
+                        if (!isActive && !isOwned) return null; 
+                        
+                        let meta = null;
+                        try {
+                            meta = await fetchIPFS(data[2], "json");
+                        } catch(e) {
+                            console.error("Failed to load metadata", i);
+                        }
+
+                        return {
+                            id: Number(data[0]),
+                            price: data[1],
+                            metadataCid: data[2],
+                            creator: data[4],
+                            meta,
+                            isOwned,
+                            active: isActive,
+                            maxSupply: Number(data[6]),
+                            currentSupply: Number(data[7]),
+                            royalty: Number(data[8]) / 100
+                        } as DigitalAsset;
+
+                    } catch (innerErr) {
+                        console.error(`Error fetching asset ${i}`, innerErr);
+                        return null;
+                    }
+                })());
             }
-            setAssets(loadedAssets);
+
+            const results = await Promise.all(promises);
+
+            const validAssets = results.filter((item): item is DigitalAsset => item !== null);
+
+            setAssets(validAssets);
             setStatus("CONNECTED");
         } catch (err) {
             console.error(err);
@@ -335,7 +358,16 @@ export default function Home() {
         <div className="min-h-screen w-full bg-black text-white font-mono relative selection:bg-rose-500/30">
             
             <div className="fixed inset-0 z-0 w-full h-full pointer-events-none opacity-50">
-                <Scene3D unlocked={false} />
+                {!isMobile ? (
+                    <Scene3D unlocked={false} />
+                ) : (
+                    // This is the fallback for Mobile (Static Gradient Sphere)
+                    <div className="w-full h-full flex items-center justify-center bg-black">
+                        <div className="w-64 h-64 rounded-full bg-linear-to-br from-gray-900 to-black border border-white/10 shadow-[0_0_50px_rgba(255,255,255,0.1)] flex items-center justify-center">
+                            <span className="text-white/20 text-xs tracking-widest">MOBILE_OPTIMIZED</span>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="fixed inset-0 z-0 bg-[url('/grid.svg')] opacity-10 pointer-events-none"></div>
 
