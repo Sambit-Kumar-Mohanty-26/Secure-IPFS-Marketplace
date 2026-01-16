@@ -58,7 +58,7 @@ const BIOSLoader = ({ onComplete }: { onComplete: () => void }) => {
       <div className="space-y-1">
         {lines.map((l, i) => (
           <div key={i} className="flex gap-2">
-            <span className="opacity-50">[{new Date().toISOString().split('T')[1].split('.')[0]}]</span>
+            <span className="opacity-50">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
             <span>{l}</span>
           </div>
         ))}
@@ -597,6 +597,8 @@ const MainInterface = () => {
 
   const archRef = useRef(null);
   const archInView = useInView(archRef, { amount: 0.3 });
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const { scrollYProgress: scrollArch } = useScroll({
     target: archRef,
     offset: ["start start", "end end"]
@@ -1440,7 +1442,9 @@ const MainInterface = () => {
             </div>
           </div>
           <div className="p-8 font-mono text-sm space-y-2">
-            <p className="text-gray-500">Last login: {new Date().toLocaleString()} on ttys001</p>
+            <p className="text-gray-500">
+              Last login: {mounted ? new Date().toLocaleString() : "---"} on ttys001
+            </p>
             <div className="flex gap-2">
               <span className="text-emerald-500">➜</span>
               <span className="text-blue-400">~</span>
