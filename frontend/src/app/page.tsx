@@ -1188,7 +1188,7 @@ const MainInterface = () => {
                 viewport={{ once: true }}
                 transition={{ duration: 1, delay: 0.3 }}
               >
-                <span className="text-gray-300">We built this for everyone who ever had their work</span>
+                <span className="text-gray-300">We built this for everyone who ever had their work </span>
                 <motion.span
                   className="text-rose-400 font-semibold"
                   whileHover={{ scale: 1.1 }}
@@ -1200,7 +1200,7 @@ const MainInterface = () => {
                   whileHover={{ scale: 1.1 }}
                   style={{ display: "inline-block", filter: "drop-shadow(0 0 20px rgba(59, 130, 246, 0.5))" }}
                 > devalued</motion.span>
-                <span className="text-gray-300">, or</span>
+                <span className="text-gray-300">, or </span>
                 <motion.span
                   className="text-purple-400 font-semibold"
                   whileHover={{ scale: 1.1 }}

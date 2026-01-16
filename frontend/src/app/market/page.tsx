@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Lock, Unlock, Fingerprint, Loader2, FileText, ShoppingBag, X, CheckCircle, AlertOctagon, Terminal, Filter, LayoutGrid, Plus, Trash2, ShieldCheck, Search, SearchX, Play, Music, Image as ImageIcon, File, ArrowDownToLine } from "lucide-react";
+import { Lock, Unlock, Fingerprint, Loader2, FileText, ShoppingBag, X, CheckCircle, AlertOctagon, Terminal, Filter, LayoutGrid, Plus, Trash2, ShieldCheck, Search, SearchX, Play, Music, Image as ImageIcon, File, ArrowDownToLine, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"; 
 import { CONTRACT_ADDRESS, ABI } from "../constants";
 
@@ -207,19 +207,36 @@ export default function Home() {
         }
     }
 
-    async function toggleAssetStatus(assetId: number) {
+    async function toggleAssetStatus(asset: DigitalAsset) {
         try {
-            setLoadingId(assetId);
+            setLoadingId(asset.id);
             const provider = new ethers.BrowserProvider(window.ethereum);
             const signer = await provider.getSigner();
             const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
             
-            const tx = await contract.toggleAssetStatus(assetId);
-            
-            setNotification({ type: "info", title: "UPDATING STATUS", message: "Hiding asset from marketplace...", txHash: tx.hash });
+            const tx = await contract.toggleAssetStatus(asset.id);
+            const isHiding = asset.active;
+
+            setNotification({ 
+                type: "info", 
+                title: isHiding ? "HIDING ASSET" : "RESTORING ASSET", 
+                message: isHiding 
+                    ? "Removing asset from public marketplace..." 
+                    : "Making asset visible on marketplace again...", 
+                txHash: tx.hash 
+            });
+
             await tx.wait();
             
-            setNotification({ type: "success", title: "ASSET HIDDEN", message: "Asset visibility updated.", txHash: tx.hash });
+            setNotification({ 
+                type: "success", 
+                title: isHiding ? "ASSET HIDDEN" : "ASSET RESTORED", 
+                message: isHiding 
+                    ? "Item successfully hidden. It is no longer purchasable." 
+                    : "Item successfully restored. It is now purchasable.", 
+                txHash: tx.hash 
+            });
+
             loadMarketplace();
         } catch(err: any) {
             setNotification({ type: "error", title: "ERROR", message: err.message });
@@ -583,12 +600,22 @@ export default function Home() {
                                             <div className="flex gap-2">
                                                 {account && account.toLowerCase() === asset.creator.toLowerCase() && (
                                                     <button 
-                                                        onClick={() => toggleAssetStatus(asset.id)} 
+                                                        onClick={() => toggleAssetStatus(asset)} 
                                                         disabled={loadingId === asset.id}
-                                                        className="p-2.5 bg-red-950/30 border border-red-500/30 text-red-500 rounded hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
-                                                        title="Deactivate Asset"
+                                                        className={`p-2.5 border rounded transition-all disabled:opacity-50 ${
+                                                            asset.active 
+                                                            ? "bg-red-950/30 border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white" 
+                                                            : "bg-emerald-950/30 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500 hover:text-white"
+                                                        }`}
+                                                        title={asset.active ? "Deactivate Asset" : "Reactivate Asset"}
                                                     >
-                                                        {loadingId === asset.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Trash2 className="w-4 h-4" />}
+                                                        {loadingId === asset.id ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin"/>
+                                                        ) : asset.active ? (
+                                                            <Trash2 className="w-4 h-4" />
+                                                        ) : (
+                                                            <RefreshCw className="w-4 h-4" />
+                                                        )}
                                                     </button>
                                                 )}
 
