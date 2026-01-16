@@ -415,7 +415,7 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                         <Fingerprint className="text-rose-500 w-6 h-6" />
                         <div>
-                            <h1 className="text-lg font-bold tracking-widest">OBSIDIAN_MARKET</h1>
+                            <h1 className="text-lg font-bold tracking-widest">OBSIDIAN_VAULT</h1>
                             <div className="flex items-center gap-2">
                                 <div className={`w-1.5 h-1.5 rounded-full ${status === "CONNECTED" ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`}></div>
                                 <span className="text-[10px] text-gray-400">{status}</span>

@@ -1,4 +1,4 @@
-# 🔐 Secure IPFS Marketplace
+# 🔐 OBSIDIAN_VAULT (Secure IPFS Marketplace)
 
 A decentralized marketplace for buying and selling encrypted digital assets stored on IPFS with blockchain-based access control. Built with Next.js 16, Solidity 0.8.28, and Hardhat, featuring ERC1155 NFT tokens for access management and AES-256-GCM encryption for content security.
 
